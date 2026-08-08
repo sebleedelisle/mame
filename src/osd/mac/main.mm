@@ -10,14 +10,23 @@
 
 #import "appdelegate.h"
 
+#include <cstdlib>
+
 extern int mac_run_emulator(int argc, char *argv[]);
 
 int main(int argc, char * argv[])
 {
 	[NSApplication sharedApplication];
 	[NSApp setDelegate: [MAMEAppDelegate new]];
-	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-	[NSApp activateIgnoringOtherApps:YES];
+	if (std::getenv("LASER_MAME_BACKGROUND_APP"))
+	{
+		[NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+	}
+	else
+	{
+		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+		[NSApp activateIgnoringOtherApps:YES];
+	}
 	[NSApp finishLaunching];
 	[[NSNotificationCenter defaultCenter]
 		postNotificationName:NSApplicationWillFinishLaunchingNotification
