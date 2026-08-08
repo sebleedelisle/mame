@@ -11,6 +11,7 @@
 
 
 class vector_device;
+class laser_vector_pipe_sender;
 
 class vector_options
 {
@@ -41,6 +42,7 @@ public:
 
 	// construction/destruction
 	vector_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+	~vector_device();
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	void clear_list();
@@ -49,6 +51,7 @@ public:
 
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
+	virtual void device_stop() override ATTR_COLD;
 
 	// notifiers
 	util::notifier_subscription add_frame_begin_notifier(frame_begin_delegate &&n);
@@ -85,6 +88,7 @@ private:
 	};
 
 	std::unique_ptr<point[]> m_vector_list;
+	std::unique_ptr<laser_vector_pipe_sender> m_laser_vector_pipe;
 	int m_vector_index;
 	int m_min_intensity;
 	int m_max_intensity;

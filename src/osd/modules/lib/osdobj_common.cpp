@@ -297,6 +297,7 @@ void osd_common_t::register_options()
 #if defined(SDLMAME_SDL2) || defined(SDLMAME_SDL3)
 	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_SDL);
 #endif
+	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_LASER);
 	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_RAWINPUT);
 	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_DINPUT);
 	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_WIN32);
@@ -322,6 +323,7 @@ void osd_common_t::register_options()
 	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_SDLGAME);
 	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_SDLJOY);
 #endif
+	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_LASER);
 	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_WINHYBRID);
 	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_DINPUT);
 	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_XINPUT);
@@ -331,7 +333,6 @@ void osd_common_t::register_options()
 	REGISTER_MODULE(m_mod_man, OUTPUT_CONSOLE);
 	REGISTER_MODULE(m_mod_man, OUTPUT_NETWORK);
 	REGISTER_MODULE(m_mod_man, OUTPUT_WIN32);
-
 
 	// after initialization we know which modules are supported
 	update_option(OSD_FONT_PROVIDER, m_mod_man.get_module_names(OSD_FONT_PROVIDER));
