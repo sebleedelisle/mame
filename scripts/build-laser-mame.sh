@@ -44,7 +44,16 @@ make DEBUG="$debug" SUBTARGET=laser-mame OSD="$osd" REGENIE=1 \
   -j"$jobs"
 
 if [[ "$debug" == "0" ]]; then
-  ln -sf laser_mame laser-mame
+  built_binary="laser_mame"
 else
-  ln -sf laser_mamed laser-mame
+  built_binary="laser_mamed"
 fi
+
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    cp -f "${built_binary}.exe" laser-mame.exe
+    ;;
+  *)
+    ln -sf "$built_binary" laser-mame
+    ;;
+esac
