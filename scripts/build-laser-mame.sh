@@ -16,6 +16,15 @@ case "$(uname -s)" in
     ;;
 esac
 osd="${LASER_MAME_OSD:-$default_osd}"
+nowerror="${LASER_MAME_NOWERROR:-}"
+
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    if [[ -z "${LASER_MAME_NOWERROR+x}" ]]; then
+      nowerror="1"
+    fi
+    ;;
+esac
 
 cd "$repo_root"
 
@@ -39,9 +48,21 @@ vector_sources=(
 
 sources="$(IFS=,; echo "${vector_sources[*]}")"
 
-make DEBUG="$debug" SUBTARGET=laser-mame OSD="$osd" REGENIE=1 \
-  SOURCES="$sources" \
+make_args=(
+  DEBUG="$debug"
+  SUBTARGET=laser-mame
+  OSD="$osd"
+  REGENIE=1
+  SOURCES="$sources"
   -j"$jobs"
+)
+
+if [[ -n "$nowerror" && "$nowerror" != "0" ]]; then
+  echo "Building with MAME NOWERROR=$nowerror."
+  make_args+=(NOWERROR="$nowerror")
+fi
+
+make "${make_args[@]}"
 
 if [[ "$debug" == "0" ]]; then
   built_binary="laser_mame"
