@@ -2,6 +2,7 @@ name: Compile UI translations
 
 on:
   push:
+    branches-ignore: [laser-pipe-ipc-mame]
     paths:
     - '.github/workflows/**'
     - 'language/**'

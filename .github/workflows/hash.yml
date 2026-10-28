@@ -2,6 +2,7 @@ name: XML/JSON validation
 
 on:
   push:
+    branches-ignore: [laser-pipe-ipc-mame]
     paths:
     - '.github/workflows/**'
     - 'ctrlr/*'

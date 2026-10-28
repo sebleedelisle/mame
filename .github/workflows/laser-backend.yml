@@ -1,0 +1,158 @@
+name: Laser Backend
+
+on:
+  push:
+    branches: [laser-pipe-ipc-mame]
+    paths:
+      - 'src/**'
+      - '3rdparty/**'
+      - 'scripts/**'
+      - 'makefile'
+      - 'COPYING'
+      - '.github/workflows/laser-backend.yml'
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Laser MAME branch or commit to compile
+        required: true
+        default: laser-pipe-ipc-mame
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: laser-backend-${{ inputs.source_ref || github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SYMBOLS: '1'
+  SYMLEVEL: '1'
+  STRIP_SYMBOLS: '0'
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+      tag: ${{ steps.source.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+      - id: source
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=laser-backend-v1-$sha" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos-arm64
+          - os: windows-2022
+            platform: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+      - name: Build and bundle (macOS)
+        if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '12.0'
+        run: |
+          test "$RUNNER_ARCH" = ARM64
+          scripts/build-laser-mame.sh
+          python3 scripts/package-laser-backend.py --platform macos-arm64 --output-dir out
+      - name: Verify bundle (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir "$RUNNER_TEMP/backend-test"
+          tar -xzf out/laser-backend-macos-arm64.tar.gz -C "$RUNNER_TEMP/backend-test"
+          backend="$RUNNER_TEMP/backend-test/bin/laser_mame"
+          "$backend" -noreadconfig -video none -sound coreaudio -keyboardprovider laser -joystickprovider laser -showconfig > "$RUNNER_TEMP/backend-config.txt"
+          grep -q '^video[[:space:]]*none' "$RUNNER_TEMP/backend-config.txt"
+          grep -q '^keyboardprovider[[:space:]]*laser' "$RUNNER_TEMP/backend-config.txt"
+          grep -q '^joystickprovider[[:space:]]*laser' "$RUNNER_TEMP/backend-config.txt"
+          otool -l "$backend" | awk '/LC_BUILD_VERSION/ { found=1; next } found && /minos/ { print $2; found=0 }' | grep -qx '12.0'
+          if codesign -dv --verbose=4 "$backend" 2>&1 | grep -q '^Authority='; then
+            echo '::error::Backend bundles must not have a production signature'
+            exit 1
+          fi
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: UCRT64
+          update: true
+          path-type: inherit
+          install: git make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python
+      - name: Build and bundle (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          JOBS="${NUMBER_OF_PROCESSORS:-2}" scripts/build-laser-mame.sh
+          python scripts/package-laser-backend.py --platform windows-x64 --runtime-dir "$MINGW_PREFIX/bin" --output-dir out
+      - name: Verify bundle without MSYS2 on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP 'backend-test'
+          New-Item -ItemType Directory $destination | Out-Null
+          tar -xzf out/laser-backend-windows-x64.tar.gz -C $destination
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle extraction failed' }
+          $backend = Join-Path $destination 'bin\laser-mame.exe'
+          if ((Get-AuthenticodeSignature $backend).Status -ne 'NotSigned') { throw 'Backend bundles must be unsigned' }
+          $savedPath = $env:PATH
+          try {
+            $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+            & $backend -noreadconfig -video none -sound auto -keyboardprovider laser -joystickprovider laser -showconfig > "$env:RUNNER_TEMP\backend-config.txt"
+            if ($LASTEXITCODE -ne 0) { throw 'Bundled backend failed without MSYS2 on PATH' }
+          } finally { $env:PATH = $savedPath }
+          foreach ($provider in @('video\s+none', 'keyboardprovider\s+laser', 'joystickprovider\s+laser')) {
+            if (!(Select-String "$env:RUNNER_TEMP\backend-config.txt" -Pattern "^$provider" -Quiet)) { throw "Missing provider: $provider" }
+          }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: laser-backend-${{ matrix.platform }}
+          path: |
+            out/*.tar.gz
+            out/*.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          merge-multiple: true
+      - name: Publish unsigned backend bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          CACHE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          cat > backend-notes.md <<EOF
+          Reusable unsigned Laser MAME backends for Liberation Arcade.
+
+          Source: https://github.com/sebleedelisle/mame/commit/$SOURCE_SHA
+          Build: Release with matching native debug symbols; macOS minimum 12.0.
+          Each archive contains a source/platform manifest, runtime dependencies and licenses.
+          No GUI, installer, signing or ROMs are included.
+          EOF
+          if gh release view "$CACHE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Backend release already exists; refusing to replace published binaries.'
+            exit 1
+          fi
+          gh release create "$CACHE_TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title "Laser MAME backend ${SOURCE_SHA:0:12}" --notes-file backend-notes.md \
+            --prerelease --latest=false ./*.tar.gz ./*.sha256

@@ -2,6 +2,7 @@ name: Build documentation
 
 on:
   push:
+    branches-ignore: [laser-pipe-ipc-mame]
     paths:
     - '.github/workflows/**'
     - 'docs/**'
